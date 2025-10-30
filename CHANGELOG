@@ -1,3 +1,7 @@
+v1.14 (Unofficial)
+- Added support for hk2018 and hk2019
+- Added Type Compendium loading. By default the input file's directory gets seached.
+- Added "Fromsoft Import". Coords setup is incompatible with this option enabled.
 v1.13
 - Added blend hint override.
 - Stability fixes

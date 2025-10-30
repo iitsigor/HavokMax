@@ -368,6 +368,7 @@ void HavokMax::LoadCFG() {
   CheckDlgButton(hWnd, IDC_CH_ANIOPTIMIZE, checked[Checked::CH_ANIOPTIMIZE]);
   CheckDlgButton(hWnd, IDC_CH_ANISKELETON, checked[Checked::CH_ANISKELETON]);
   CheckDlgButton(hWnd, IDC_CH_DISABLE_SCALE, checked[Checked::CH_DISABLE_SCALE]);
+  CheckDlgButton(hWnd, IDC_CH_FROMSOFT, checked[Checked::CH_FROMSOFT]);
   EnableWindow(GetDlgItem(hWnd, IDC_CH_ANIOPTIMIZE), visible[Visible::CH_ANIOPTIMIZE]);
   EnableWindow(GetDlgItem(hWnd, IDC_CH_ANISKELETON), visible[Visible::CH_ANISKELETON]);
   EnableWindow(GetDlgItem(hWnd, IDC_EDIT_ANIEND), visible[Visible::SP_ANIEND]);
@@ -645,6 +646,11 @@ INT_PTR CALLBACK DialogCallbacksMain(HWND hWnd, UINT message, WPARAM wParam,
       imp->checked.Set(Checked::CH_DISABLE_SCALE,
                        IsDlgButtonChecked(hWnd, IDC_CH_DISABLE_SCALE) != 0);
       break;
+
+	case IDC_CH_FROMSOFT:
+		imp->checked.Set(Checked::CH_FROMSOFT,
+			IsDlgButtonChecked(hWnd, IDC_CH_FROMSOFT) != 0);
+		break;
 
     default:
       return imp ? imp->DlgCommandCallBack(wParam, lParam) : FALSE;

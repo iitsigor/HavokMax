@@ -25,6 +25,24 @@
 #define HavokImport_CLASS_ID Class_ID(0xad115395, 0x924c02c0)
 static const TCHAR _className[] = _T("HavokImport");
 
+static const Matrix3 PermutationTMat(Point3(1, 0, 0), Point3(0, 0, 1), Point3(0, 1, 0), Point3(0, 0, 0));
+static const Matrix3 RootTMat(Point3(1, 0, 0), Point3(0, 1, 0), Point3(0, 0, 1), Point3(0, 0, 0));
+
+class NodeData {
+public:
+	INode *hkBone;
+	std::vector<Matrix3> TMat;
+
+	void TransformData(Matrix3 transform);
+};
+
+void NodeData::TransformData(Matrix3 transform) {
+	auto result = PermutationTMat * transform;
+	result = result * PermutationTMat;
+
+	TMat.push_back(result);
+}
+
 class HavokImport : public SceneImport, HavokMaxV2 {
 public:
   // Constructor/Destructor
@@ -99,6 +117,7 @@ static const MSTR boneNameHint = _T("hkaBone");
 void HavokImport::LoadSkeleton(const hkaSkeleton *skel) {
   std::vector<INode *> nodes;
   int currentBone = 0;
+  std::vector<NodeData> skelTMat;
 
   for (auto b : *skel->Bones()) {
     TSTRING boneName = ToTSTRING(b->Name());
@@ -119,13 +138,19 @@ void HavokImport::LoadSkeleton(const hkaSkeleton *skel) {
         reinterpret_cast<const Quat &>(bneTM.rotation.QConjugate()));
     nodeTM.SetTrans(
         reinterpret_cast<const Point3 &>(bneTM.translation * objectScale));
+
     const auto parentNode = b->Parent();
     if (parentNode) {
       const auto bIndex = parentNode->Index();
       nodes[bIndex]->AttachChild(node);
       nodeTM *= nodes[bIndex]->GetNodeTM(0);
-    } else
-      nodeTM *= corMat;
+	}
+	else {
+		// For personal sanity reasons
+		if (!checked[Checked::CH_FROMSOFT]) {
+			nodeTM *= corMat;
+		}
+	}
 
     node->SetNodeTM(0, nodeTM);
 
@@ -134,7 +159,21 @@ void HavokImport::LoadSkeleton(const hkaSkeleton *skel) {
     node->SetUserPropString(skelNameHint, ToTSTRING(skel->Name()).data());
     node->SetUserPropString(boneNameHint, ToTSTRING(currentBone).c_str());
 
+	if (checked[Checked::CH_FROMSOFT]) {
+		NodeData boneTMat;
+		boneTMat.hkBone = node;
+		boneTMat.TransformData(node->GetNodeTM(0));
+
+		skelTMat.push_back(boneTMat);
+	}
+
     currentBone++;
+  }
+
+  if (checked[Checked::CH_FROMSOFT]) {
+	  for (int i = 0; i < skelTMat.size(); i++) {
+		  skelTMat[i].hkBone->SetNodeTM(0, skelTMat[i].TMat[0]);
+	  }
   }
 }
 
@@ -230,11 +269,23 @@ void HavokImport::LoadRootMotion(const hkaAnimatedReferenceFrame *ani,
       auto cTrans = reinterpret_cast<Point3 &>(trans.translation * objectScale);
       cMat.SetRotate(cRotation);
       cMat.SetTrans(cTrans);
-      auto trueTM = cMats[cTime++] * Inverse(corMat);
 
-      SetXFormPacket packet(trueTM * cMat * corMat);
+	  // This is not good
+	  if (checked[Checked::CH_FROMSOFT]) {
+		  cMat = PermutationTMat * cMat;
+		  cMat = cMat * PermutationTMat;
 
-      cnt->SetValue(SecToTicks(t), &packet);
+		  auto trueTM = cMats[cTime++] * Inverse(RootTMat);
+
+		  SetXFormPacket packet(trueTM * cMat * RootTMat);
+		  cnt->SetValue(SecToTicks(t), &packet);
+	  }
+	  else {
+		  auto trueTM = cMats[cTime++] * Inverse(corMat);
+
+		  SetXFormPacket packet(trueTM * cMat * corMat);
+		  cnt->SetValue(SecToTicks(t), &packet);
+	  }
     }
 
     AnimateOff();
@@ -242,196 +293,236 @@ void HavokImport::LoadRootMotion(const hkaAnimatedReferenceFrame *ani,
 }
 
 void HavokImport::LoadAnimation(const hkaAnimation *ani,
-                                const hkaAnimationBinding *bind) {
-  if (!ani) {
-    printerror("[Havok] Unregistered animation format.");
-    return;
-  }
+	const hkaAnimationBinding *bind) {
+	if (!ani) {
+		printerror("[Havok] Unregistered animation format.");
+		return;
+	}
 
-  /*if (!ani->IsDecoderSupported()) {
-    printerror("[Havok] Usupported animation type: ",
-               << ani->GetAnimationTypeName());
-    return;
-  }*/
+	iBoneScanner.RescanBones();
 
-  iBoneScanner.RescanBones();
+	TimeValue numTicks = SecToTicks(ani->Duration());
+	TimeValue ticksPerFrame = GetTicksPerFrame();
+	TimeValue overlappingTicks = numTicks % ticksPerFrame;
 
-  TimeValue numTicks = SecToTicks(ani->Duration());
-  TimeValue ticksPerFrame = GetTicksPerFrame();
-  TimeValue overlappingTicks = numTicks % ticksPerFrame;
+	if (overlappingTicks > (ticksPerFrame / 2)) {
+		numTicks += ticksPerFrame - overlappingTicks;
+	}
+	else {
+		numTicks -= overlappingTicks;
+	}
+	Interval aniRange(0, numTicks);
+	GetCOREInterface()->SetAnimRange(aniRange);
 
-  if (overlappingTicks > (ticksPerFrame / 2)) {
-    numTicks += ticksPerFrame - overlappingTicks;
-  } else {
-    numTicks -= overlappingTicks;
-  }
-  Interval aniRange(0, numTicks);
-  GetCOREInterface()->SetAnimRange(aniRange);
+	std::vector<float> frameTimes;
 
-  std::vector<float> frameTimes;
+	for (TimeValue v = 0; v <= aniRange.End(); v += GetTicksPerFrame()) {
+		frameTimes.push_back(TicksToSec(v));
+	}
 
-  for (TimeValue v = 0; v <= aniRange.End(); v += GetTicksPerFrame()) {
-    frameTimes.push_back(TicksToSec(v));
-  }
+	const auto numBones = ani->GetNumOfTransformTracks();
+	BlendHint blendType = bind ? bind->GetBlendHint() : BlendHint::NORMAL;
 
-  const auto numBones = ani->GetNumOfTransformTracks();
-  BlendHint blendType = bind ? bind->GetBlendHint() : BlendHint::NORMAL;
+	if (additiveOverride) {
+		blendType = static_cast<BlendHint>(additiveOverride);
+	}
 
-  if (additiveOverride) {
-    blendType = static_cast<BlendHint>(additiveOverride);
-  }
+	std::vector<Matrix3> addTMs(numBones, true);
 
-  std::vector<Matrix3> addTMs(numBones, true);
+	if (blendType != BlendHint::NORMAL) {
+		for (int curBone = 0; curBone < numBones; curBone++) {
+			INode *node = nullptr;
+			TSTRING boneName;
 
-  if (blendType != BlendHint::NORMAL) {
-    for (int curBone = 0; curBone < numBones; curBone++) {
-      INode *node = nullptr;
-      TSTRING boneName;
+			if (ani->GetNumAnnotations()) {
+				hkaAnnotationTrackPtr annot = ani->GetAnnotation(curBone);
+				boneName = ToTSTRING(annot.get()->GetName());
+				node = GetCOREInterface()->GetINodeByName(boneName.c_str());
+			}
 
-      if (ani->GetNumAnnotations()) {
-        hkaAnnotationTrackPtr annot = ani->GetAnnotation(curBone);
-        boneName = ToTSTRING(annot.get()->GetName());
-        node = GetCOREInterface()->GetINodeByName(boneName.c_str());
-      }
+			if (!node && bind) {
+				node = iBoneScanner.LookupNode(
+					bind->GetTransformTrackToBoneIndex(curBone));
+			}
 
-      if (!node && bind) {
-        node = iBoneScanner.LookupNode(
-            bind->GetTransformTrackToBoneIndex(curBone));
-      }
+			if (!node) {
+				continue;
+			}
 
-      if (!node) {
-        continue;
-      }
+			Matrix3 inPacket = node->GetNodeTM(0);
 
-      Matrix3 inPacket = node->GetNodeTM(0);
+			if (!node->GetParentNode()->IsRootNode()) {
+				Matrix3 parentTM = node->GetParentTM(0);
+				parentTM.Invert();
+				inPacket *= parentTM;
+			}
 
-      if (!node->GetParentNode()->IsRootNode()) {
-        Matrix3 parentTM = node->GetParentTM(0);
-        parentTM.Invert();
-        inPacket *= parentTM;
-      }
+			addTMs[curBone] = inPacket;
+		}
+	}
 
-      addTMs[curBone] = inPacket;
-    }
-  }
+	// Initialize NodeData vector for FromSoft mode
+	std::vector<NodeData> aniTMats;
+	if (checked[Checked::CH_FROMSOFT]) {
+		aniTMats.resize(numBones);
+	}
 
-  const auto tracks = ani->Tracks();
+	const auto tracks = ani->Tracks();
 
-  for (int curBone = 0; curBone < numBones; curBone++) {
-    INode *node = nullptr;
-    es::string_view bneNameRaw;
+	for (int curBone = 0; curBone < numBones; curBone++) {
+		INode *node = nullptr;
+		es::string_view bneNameRaw;
 
-    if (ani->GetNumAnnotations()) {
-      hkaAnnotationTrackPtr annot = ani->GetAnnotation(curBone);
-      bneNameRaw = annot.get()->GetName();
-      TSTRING boneName = ToTSTRING(bneNameRaw);
-      node = GetCOREInterface()->GetINodeByName(boneName.c_str());
-    }
+		if (ani->GetNumAnnotations()) {
+			hkaAnnotationTrackPtr annot = ani->GetAnnotation(curBone);
+			bneNameRaw = annot.get()->GetName();
+			TSTRING boneName = ToTSTRING(bneNameRaw);
+			node = GetCOREInterface()->GetINodeByName(boneName.c_str());
+		}
 
-    if (!node) {
-      if (bind && bind->GetNumTransformTrackToBoneIndices()) {
-        node = iBoneScanner.LookupNode(
-            bind->GetTransformTrackToBoneIndex(curBone));
-      } else {
-        node = iBoneScanner.LookupNode(curBone);
-      }
-    }
+		if (!node) {
+			if (bind && bind->GetNumTransformTrackToBoneIndices()) {
+				node = iBoneScanner.LookupNode(
+					bind->GetTransformTrackToBoneIndex(curBone));
+			}
+			else {
+				node = iBoneScanner.LookupNode(curBone);
+			}
+		}
 
-    if (!node) {
-      if (bneNameRaw.length()) {
-        printwarning("[Havok] Couldn't find bone: " << bneNameRaw);
-      } else if (bind && bind->GetNumTransformTrackToBoneIndices()) {
-        printwarning("[Havok] Couldn't find hkaBone: "
-                     << bind->GetTransformTrackToBoneIndex(curBone));
-      } else {
-        printwarning("[Havok] Couldn't find hkaBone: " << curBone);
-      }
+		if (!node) {
+			if (bneNameRaw.length()) {
+				printwarning("[Havok] Couldn't find bone: " << bneNameRaw);
+			}
+			else if (bind && bind->GetNumTransformTrackToBoneIndices()) {
+				printwarning("[Havok] Couldn't find hkaBone: "
+					<< bind->GetTransformTrackToBoneIndex(curBone));
+			}
+			else {
+				printwarning("[Havok] Couldn't find hkaBone: " << curBone);
+			}
 
-      continue;
-    }
+			continue;
+		}
 
-    Control *cnt = node->GetTMController();
+		// Store node reference for FromSoft mode
+		if (checked[Checked::CH_FROMSOFT]) {
+			aniTMats[curBone].hkBone = node;
+		}
 
-    if (cnt->GetPositionController()->ClassID() !=
-        Class_ID(LININTERP_POSITION_CLASS_ID, 0)) {
-      cnt->SetPositionController((Control *)CreateInstance(
-          CTRL_POSITION_CLASS_ID, Class_ID(LININTERP_POSITION_CLASS_ID, 0)));
-    }
+		Control *cnt = node->GetTMController();
 
-    if (cnt->GetRotationController()->ClassID() !=
-        Class_ID(HYBRIDINTERP_ROTATION_CLASS_ID, 0)) {
-      cnt->SetRotationController((Control *)CreateInstance(
-          CTRL_ROTATION_CLASS_ID, Class_ID(HYBRIDINTERP_ROTATION_CLASS_ID, 0)));
-    }
+		if (cnt->GetPositionController()->ClassID() !=
+			Class_ID(LININTERP_POSITION_CLASS_ID, 0)) {
+			cnt->SetPositionController((Control *)CreateInstance(
+				CTRL_POSITION_CLASS_ID, Class_ID(LININTERP_POSITION_CLASS_ID, 0)));
+		}
 
-    if (cnt->GetScaleController()->ClassID() !=
-        Class_ID(LININTERP_SCALE_CLASS_ID, 0)) {
-      cnt->SetScaleController((Control *)CreateInstance(
-          CTRL_SCALE_CLASS_ID, Class_ID(LININTERP_SCALE_CLASS_ID, 0)));
-    }
+		if (cnt->GetRotationController()->ClassID() !=
+			Class_ID(TCBINTERP_ROTATION_CLASS_ID, 0)) {
+			cnt->SetRotationController((Control *)CreateInstance(
+				CTRL_ROTATION_CLASS_ID, Class_ID(TCBINTERP_ROTATION_CLASS_ID, 0)));
+		}
 
-    SuspendAnimate();
-    AnimateOn();
+		if (cnt->GetScaleController()->ClassID() !=
+			Class_ID(LININTERP_SCALE_CLASS_ID, 0)) {
+			cnt->SetScaleController((Control *)CreateInstance(
+				CTRL_SCALE_CLASS_ID, Class_ID(LININTERP_SCALE_CLASS_ID, 0)));
+		}
 
-    const auto track = tracks->At(curBone);
+		SuspendAnimate();
+		AnimateOn();
 
-    for (auto &t : frameTimes) {
-      hkQTransform trans;
-      track->GetValue(trans, t);
+		const auto track = tracks->At(curBone);
 
-      Matrix3 cMat;
-      Quat &cRotation = reinterpret_cast<Quat &>(trans.rotation.QConjugate());
-      auto cTrans = reinterpret_cast<Point3 &>(trans.translation * objectScale);
+		for (auto &t : frameTimes) {
+			hkQTransform trans;
+			track->GetValue(trans, t);
 
-      if (blendType == BlendHint::ADDITIVE_DEPRECATED) {
-        cMat.SetRotate(Quat(addTMs[curBone]) + cRotation);
-        cMat.SetTrans(cTrans + addTMs[curBone].GetTrans());
-      } else if (blendType == BlendHint::ADDITIVE) {
-        cMat.SetRotate(cRotation + Quat(addTMs[curBone]));
-        cMat.SetTrans(cTrans + addTMs[curBone].GetTrans());
-      } else {
-        cMat.SetRotate(cRotation);
-        cMat.SetTrans(cTrans);
-      }
+			Matrix3 cMat;
+			Quat &cRotation = reinterpret_cast<Quat &>(trans.rotation.QConjugate());
+			auto cTrans = reinterpret_cast<Point3 &>(trans.translation * objectScale);
 
-      if (!checked[Checked::CH_DISABLE_SCALE]) {
-        cMat.Scale(reinterpret_cast<Point3 &>(trans.scale));
-      }
+			if (blendType == BlendHint::ADDITIVE_DEPRECATED) {
+				cMat.SetRotate(Quat(addTMs[curBone]) + cRotation);
+				cMat.SetTrans(cTrans + addTMs[curBone].GetTrans());
+			}
+			else if (blendType == BlendHint::ADDITIVE) {
+				cMat.SetRotate(cRotation + Quat(addTMs[curBone]));
+				cMat.SetTrans(cTrans + addTMs[curBone].GetTrans());
+			}
+			else {
+				cMat.SetRotate(cRotation);
+				cMat.SetTrans(cTrans);
+			}
 
-      if (node->GetParentNode()->IsRootNode()) {
-        cMat *= corMat;
-      } else if (!checked[Checked::CH_DISABLE_SCALE]) {
-        Matrix3 pAbsMat = node->GetParentTM(SecToTicks(t));
-        Point3 nScale = {pAbsMat.GetRow(0).Length(), pAbsMat.GetRow(1).Length(),
-                         pAbsMat.GetRow(2).Length()};
+			if (!checked[Checked::CH_DISABLE_SCALE]) {
+				cMat.Scale(reinterpret_cast<Point3 &>(trans.scale));
+			}
 
-        for (int s = 0; s < 3; s++) {
-          if (!nScale[s]) {
-            nScale[s] = FLT_EPSILON;
-          }
-        }
-        Point3 fracPos = cMat.GetTrans() / nScale;
-        nScale = 1.f - nScale;
-        cMat.Translate(fracPos * nScale);
-      }
+			if (node->GetParentNode()->IsRootNode()) {
+				if (!checked[Checked::CH_FROMSOFT]) {
+					cMat *= corMat;
+				}
+			}
+			else if (!checked[Checked::CH_DISABLE_SCALE]) {
+				Matrix3 pAbsMat = node->GetParentTM(SecToTicks(t));
+				Point3 nScale = { pAbsMat.GetRow(0).Length(), pAbsMat.GetRow(1).Length(),
+								 pAbsMat.GetRow(2).Length() };
 
-      SetXFormPacket packet(cMat);
+				for (int s = 0; s < 3; s++) {
+					if (!nScale[s]) {
+						nScale[s] = FLT_EPSILON;
+					}
+				}
+				Point3 fracPos = cMat.GetTrans() / nScale;
+				nScale = 1.f - nScale;
+				cMat.Translate(fracPos * nScale);
+			}
 
-      cnt->SetValue(SecToTicks(t), &packet);
-    }
+			// Cache transformed matrices for FromSoft mode instead of applying directly
+			if (checked[Checked::CH_FROMSOFT]) {
+				aniTMats[curBone].TransformData(cMat);
+			}
+			else {
+				SetXFormPacket packet(cMat);
+				cnt->SetValue(SecToTicks(t), &packet);
+			}
+		}
 
-    AnimateOff();
+		AnimateOff();
 
-    Control *rotControl = (Control *)CreateInstance(
-        CTRL_ROTATION_CLASS_ID, Class_ID(LININTERP_ROTATION_CLASS_ID, 0));
-    rotControl->Copy(cnt->GetRotationController());
-    cnt->GetRotationController()->Copy(rotControl);
-  }
+		Control *rotControl = (Control *)CreateInstance(
+			CTRL_ROTATION_CLASS_ID, Class_ID(TCBINTERP_ROTATION_CLASS_ID, 0));
+		rotControl->Copy(cnt->GetRotationController());
+		cnt->GetRotationController()->Copy(rotControl);
+	}
 
-  LoadRootMotion(ani->GetExtractedMotion(), frameTimes);
+	// Apply all cached transformations for FromSoft mode
+	if (checked[Checked::CH_FROMSOFT]) {
+		for (int i = 0; i < aniTMats.size(); i++) {
+			if (!aniTMats[i].hkBone) {
+				continue; // Skip bones that weren't found
+			}
+
+			Control *cnt = aniTMats[i].hkBone->GetTMController();
+			SuspendAnimate();
+			AnimateOn();
+
+			for (size_t frameIdx = 0; frameIdx < frameTimes.size(); frameIdx++) {
+				SetXFormPacket packet(aniTMats[i].TMat[frameIdx]);
+				cnt->SetValue(SecToTicks(frameTimes[frameIdx]), &packet);
+			}
+
+			AnimateOff();
+		}
+	}
+
+	LoadRootMotion(ani->GetExtractedMotion(), frameTimes);
 }
 
 void HavokImport::DoImport(const std::string &fileName, bool suppressPrompts) {
+	// The object that gets created from the file
   auto pFile = IhkPackFile::Create(std::to_string(fileName));
   const hkRootLevelContainer *rootCont = pFile->GetRootLevelContainer();
 
