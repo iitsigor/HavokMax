@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-project(HavokMax VERSION 1.13)
+project(HavokMax VERSION 1.14)
 
 set (HavokLibLibraryPath ../HavokLib)
 set(CMAKE_CXX_STANDARD 14)

@@ -114,10 +114,47 @@ void HavokImport::ShowAbout(HWND hWnd) { ShowAboutDLG(hWnd); }
 static const MSTR skelNameHint = _T("hkaSkeleton");
 static const MSTR boneNameHint = _T("hkaBone");
 
+static const MSTR rootName = _T("hkRootNode");
+
+void RemoveAllAnimation(INode* node)
+{
+	Control* tmCtrl = node->GetTMController();
+	if (!tmCtrl) return;
+
+	Control* posCtrl = tmCtrl->GetPositionController();
+	if (posCtrl && posCtrl->NumKeys() > 0)
+		posCtrl->DeleteKeys(TRACK_DOALL);
+
+	Control* rotCtrl = tmCtrl->GetRotationController();
+	if (rotCtrl && rotCtrl->NumKeys() > 0)
+		rotCtrl->DeleteKeys(TRACK_DOALL);
+
+	Control* scaleCtrl = tmCtrl->GetScaleController();
+	if (scaleCtrl && scaleCtrl->NumKeys() > 0)
+		scaleCtrl->DeleteKeys(TRACK_DOALL);
+}
+
 void HavokImport::LoadSkeleton(const hkaSkeleton *skel) {
   std::vector<INode *> nodes;
   int currentBone = 0;
   std::vector<NodeData> skelTMat;
+
+  INode *RMNode = GetCOREInterface()->GetINodeByName(rootName);
+
+  if (checked[Checked::CH_ADD_ROOTMOTION]) {
+	  if (!RMNode) {
+		  Object *obj = static_cast<Object *>(
+			  CreateInstance(HELPER_CLASS_ID, Class_ID(DUMMY_CLASS_ID, 0)));
+		  RMNode = GetCOREInterface()->CreateObjectNode(obj);
+		  RMNode->ShowBone(2);
+		  RMNode->SetWireColor(0xff80);
+		  RMNode->SetName(rootName);
+	  }
+
+	  RemoveAllAnimation(RMNode);
+
+	  RMNode->SetNodeTM(0, const_cast<Matrix3&>(RootTMat));
+  }
 
   for (auto b : *skel->Bones()) {
     TSTRING boneName = ToTSTRING(b->Name());
@@ -248,6 +285,55 @@ void HavokImport::LoadRootMotion(const hkaAnimatedReferenceFrame *ani,
                  return false;
                });
 
+  INode *RMNode = GetCOREInterface()->GetINodeByName(rootName);
+
+  if (checked[Checked::CH_ADD_ROOTMOTION]) {
+	  if (!RMNode) {
+		  Object *obj = static_cast<Object *>(
+			  CreateInstance(HELPER_CLASS_ID, Class_ID(DUMMY_CLASS_ID, 0)));
+		  RMNode = GetCOREInterface()->CreateObjectNode(obj);
+		  RMNode->ShowBone(2);
+		  RMNode->SetWireColor(0xff80);
+		  RMNode->SetName(rootName);
+	  }
+
+	  std::vector<Matrix3> cMats;
+	  cMats.reserve(times.size());
+
+	  for (auto t : times) {
+		  cMats.emplace_back(RMNode->GetNodeTM(SecToTicks(t)));
+	  }
+
+	  size_t cTime = 0;
+	  Control *cnt = RMNode->GetTMController();
+	  AnimateOn();
+
+	  for (auto t : times) {
+		  hkQTransform trans;
+		  ani->GetValue(trans, t);
+
+		  Matrix3 cMat(true);
+		  Quat &cRotation = reinterpret_cast<Quat &>(trans.rotation.QConjugate());
+		  auto cTrans = reinterpret_cast<Point3 &>(trans.translation * objectScale);
+		  cMat.SetRotate(cRotation);
+		  cMat.SetTrans(cTrans);
+
+		  if (checked[Checked::CH_FROMSOFT]) {
+			  cMat = PermutationTMat * cMat;
+			  cMat = cMat * PermutationTMat;
+
+			  SetXFormPacket packet(cMat * RootTMat);
+			  cnt->SetValue(SecToTicks(t), &packet);
+		  }
+		  else {
+			  SetXFormPacket packet(cMat * corMat);
+			  cnt->SetValue(SecToTicks(t), &packet);
+		  }
+	  }
+
+	  AnimateOff();
+  }
+
   for (auto r : rootNodes) {
     std::vector<Matrix3> cMats;
     cMats.reserve(times.size());
@@ -270,7 +356,6 @@ void HavokImport::LoadRootMotion(const hkaAnimatedReferenceFrame *ani,
       cMat.SetRotate(cRotation);
       cMat.SetTrans(cTrans);
 
-	  // This is not good
 	  if (checked[Checked::CH_FROMSOFT]) {
 		  cMat = PermutationTMat * cMat;
 		  cMat = cMat * PermutationTMat;
@@ -297,6 +382,24 @@ void HavokImport::LoadAnimation(const hkaAnimation *ani,
 	if (!ani) {
 		printerror("[Havok] Unregistered animation format.");
 		return;
+	}
+
+	INode *RMNode = GetCOREInterface()->GetINodeByName(rootName);
+
+	// Create a Root Motion node and Wipe the frame data off it
+	if (checked[Checked::CH_ADD_ROOTMOTION]) {
+		if (!RMNode) {
+			Object *obj = static_cast<Object *>(
+				CreateInstance(HELPER_CLASS_ID, Class_ID(DUMMY_CLASS_ID, 0)));
+			RMNode = GetCOREInterface()->CreateObjectNode(obj);
+			RMNode->ShowBone(2);
+			RMNode->SetWireColor(0xff80);
+			RMNode->SetName(rootName);
+		}
+
+		RemoveAllAnimation(RMNode);
+
+		RMNode->SetNodeTM(0, const_cast<Matrix3&>(RootTMat));
 	}
 
 	iBoneScanner.RescanBones();

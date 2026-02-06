@@ -369,6 +369,7 @@ void HavokMax::LoadCFG() {
   CheckDlgButton(hWnd, IDC_CH_ANISKELETON, checked[Checked::CH_ANISKELETON]);
   CheckDlgButton(hWnd, IDC_CH_DISABLE_SCALE, checked[Checked::CH_DISABLE_SCALE]);
   CheckDlgButton(hWnd, IDC_CH_FROMSOFT, checked[Checked::CH_FROMSOFT]);
+  CheckDlgButton(hWnd, IDC_CH_ADD_ROOTMOTION, checked[Checked::CH_ADD_ROOTMOTION]);
   EnableWindow(GetDlgItem(hWnd, IDC_CH_ANIOPTIMIZE), visible[Visible::CH_ANIOPTIMIZE]);
   EnableWindow(GetDlgItem(hWnd, IDC_CH_ANISKELETON), visible[Visible::CH_ANISKELETON]);
   EnableWindow(GetDlgItem(hWnd, IDC_EDIT_ANIEND), visible[Visible::SP_ANIEND]);
@@ -650,6 +651,11 @@ INT_PTR CALLBACK DialogCallbacksMain(HWND hWnd, UINT message, WPARAM wParam,
 	case IDC_CH_FROMSOFT:
 		imp->checked.Set(Checked::CH_FROMSOFT,
 			IsDlgButtonChecked(hWnd, IDC_CH_FROMSOFT) != 0);
+		break;
+
+	case IDC_CH_ADD_ROOTMOTION:
+		imp->checked.Set(Checked::CH_ADD_ROOTMOTION,
+			IsDlgButtonChecked(hWnd, IDC_CH_ADD_ROOTMOTION) != 0);
 		break;
 
     default:

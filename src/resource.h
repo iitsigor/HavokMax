@@ -59,6 +59,7 @@
 #define IDC_CHECK2                      1042
 #define IDC_CB_ADDITIVE_OVERRIDE        1043
 #define IDC_CH_FROMSOFT		            1044
+#define IDC_CH_ADD_ROOTMOTION			1045
 #define IDC_COLOR                       1456
 #define IDC_EDIT                        1490
 #define IDC_EDIT_SCALE                  1490
