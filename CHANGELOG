@@ -1,3 +1,6 @@
+v1.15 (Unofficial)
+- Fixed a minor error in spline compression
+- (Hopefully) removed key placement errors
 v1.14.2 (Unofficial)
 - Added an import for root motion
 v1.14.1 (Unofficial)

@@ -420,7 +420,7 @@ void HavokImport::LoadAnimation(const hkaAnimation *ani,
 	std::vector<float> frameTimes;
 
 	for (TimeValue v = 0; v <= aniRange.End(); v += GetTicksPerFrame()) {
-		frameTimes.push_back(TicksToSec(v));
+		frameTimes.push_back(TicksToSec(v) + 0.0001f);
 	}
 
 	const auto numBones = ani->GetNumOfTransformTracks();
