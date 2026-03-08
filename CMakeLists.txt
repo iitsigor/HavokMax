@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.3)
 project(HavokMax VERSION 1.15)
 
 set (HavokLibLibraryPath ../HavokLib)
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 add_subdirectory(3rd_party/HavokLib ${HavokLibLibraryPath})
 include(${PRECORE_SOURCE_DIR}/cmake/3dsmax.cmake)
 

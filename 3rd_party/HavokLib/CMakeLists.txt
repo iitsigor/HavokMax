@@ -26,7 +26,7 @@ option(BUILD_STATIC_LIBS "Builds havok-static target." OFF)
 option(BUILD_SHARED_LIBS "Builds havok target." OFF)
 option(PUGI_AS_SHARED "pugixml target will be shared library instead of being embedded." OFF)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 add_subdirectory(3rd_party/PreCore)
 include(targetex)
 include(chartype)

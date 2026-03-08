@@ -430,7 +430,11 @@ void HavokImport::LoadAnimation(const hkaAnimation *ani,
 		blendType = static_cast<BlendHint>(additiveOverride);
 	}
 
-	std::vector<Matrix3> addTMs(numBones, true);
+	#if VERSION_3DSMAX_B >= VERSION_3DSMAX_E(2023)
+		std::vector<Matrix3> addTMs(numBones);
+	#else
+		std::vector<Matrix3> addTMs(numBones, true);
+	#endif
 
 	if (blendType != BlendHint::NORMAL) {
 		for (int curBone = 0; curBone < numBones; curBone++) {

@@ -207,7 +207,11 @@ void LoadExternalPreset(pugi::xml_node node) {
 }
 
 void ScanPresets() {
-  TSTRING cfgPath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR);
+	#if VERSION_3DSMAX_B >= VERSION_3DSMAX_E(2025)
+	  TSTRING cfgPath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR).data();
+	#else
+		TSTRING cfgPath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR);
+	#endif
   auto cfgPathS = std::to_string(cfgPath);
   DirectoryScanner legacyScan;
   legacyScan.AddFilter(".ini");
@@ -293,12 +297,20 @@ HavokMax::HavokMax()
 }
 
 static auto GetConfig() {
-  TSTRING cfgpath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR);
+	#if VERSION_3DSMAX_B >= VERSION_3DSMAX_E(2025)
+	  TSTRING cfgpath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR).data();
+	#else
+		TSTRING cfgpath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR);
+	#endif
   return cfgpath + _T("/HavokMaxSettings.xml");
 }
 
 static void LoadLegacyConfig() {
-  TSTRING cfgpath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR);
+	#if VERSION_3DSMAX_B >= VERSION_3DSMAX_E(2025)
+	  TSTRING cfgpath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR).data();
+	#else 
+		TSTRING cfgpath = IPathConfigMgr::GetPathConfigMgr()->GetDir(APP_PLUGCFG_DIR);
+	#endif
   cfgpath += _T("/HavokImpSettings.ini");
   TCHAR legacyGroup[] = _T("HK_PRESETS_HEADER");
   UINT numPresets = GetPrivateProfileInt(legacyGroup, _T("numUserPresets"), -1,

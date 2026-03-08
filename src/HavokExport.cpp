@@ -49,7 +49,12 @@ public:
                 bool suppressPrompts);
 
   float inverseScale = 1.0f;
-  Matrix3 inverseCorMat = true;
+
+	#if VERSION_3DSMAX_B >= VERSION_3DSMAX_E(2023)
+		Matrix3 inverseCorMat;
+	#else
+		Matrix3 inverseCorMat = true;
+	#endif
 
   void ProcessAnimation(xmlSkeleton *skel, xmlAnimationBinding *binds,
                         xmlInterleavedAnimation *anim);

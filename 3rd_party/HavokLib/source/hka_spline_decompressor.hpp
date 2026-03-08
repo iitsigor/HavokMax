@@ -28,7 +28,10 @@ enum QuantizationType {
   QT_16bit,
   QT_32bit,
   QT_40bit,
-  QT_48bit,
+  QT_48bit, 
+  QT_24bit,
+  QT_16bitQuat,
+  QT_Uncompressed,
 };
 
 enum TransformType {
