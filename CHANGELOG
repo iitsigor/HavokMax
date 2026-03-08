@@ -1,3 +1,6 @@
+v1.16 (Unofficial)
+- Added support for uncompressed spline compression
+- Added support for 2023-2026 versions of max
 v1.15 (Unofficial)
 - Fixed a minor error in spline compression
 - (Hopefully) removed key placement errors
