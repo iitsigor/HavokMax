@@ -31,7 +31,7 @@ enum QuantizationType {
   QT_48bit, 
   QT_24bit,
   QT_16bitQuat,
-  QT_Uncompressed,
+  QT_Uncompressed
 };
 
 enum TransformType {

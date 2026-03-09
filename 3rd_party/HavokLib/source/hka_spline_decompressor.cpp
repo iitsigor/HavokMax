@@ -126,9 +126,9 @@ Vector4A16 ReadQuat(QuantizationType qType, const char *&buffer) {
   case QT_48bit:
     return Read48Quat(buffer);
   case QT_Uncompressed: {
-	  Vector4A16 retVal = *reinterpret_cast<const Vector4 *>(buffer);
-	  buffer += 16;
-	  return retVal;
+	Vector4A16 retVal = *reinterpret_cast<const Vector4 *>(buffer);
+	buffer += 16;
+	return retVal;
   }
   default:
     return {0.0f, 0.0f, 0.0f, 1.0f};
