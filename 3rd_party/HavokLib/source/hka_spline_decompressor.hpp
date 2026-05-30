@@ -182,6 +182,11 @@ struct hkaSplineDecompressor {
 
 inline void TransformSplineBlock::GetValue(size_t trackID, float time,
                                            hkQTransform &out) const {
+  if (trackID >= tracks.size()) {
+	out = hkQTransform();
+	return;
+  }
+
   out.rotation = tracks[trackID].rotation->GetValue(time);
   out.translation = tracks[trackID].pos->GetValue(time);
   out.scale = tracks[trackID].scale->GetValue(time);

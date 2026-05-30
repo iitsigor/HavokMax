@@ -72,12 +72,24 @@ struct hkaSplineCompressedAnimation_t
 
   void GetValue(uni::RTSValue &output, float time,
                 size_t trackID) const override {
+	if (decomp.blocks.empty()) {
+	  output = uni::RTSValue();
+	  return;
+	}
+
     size_t blockID = static_cast<size_t>(time * GetBlockInverseDuration());
+
+	if (blockID >= decomp.blocks.size()) {
+	  blockID = decomp.blocks.size() - 1;
+	}
+
     float localTime = time - (static_cast<float>(blockID) * GetBlockDuration());
 
     if (localTime < 0.f) {
       localTime = 0.f;
-    }
+    } else if (localTime > GetBlockDuration()) {
+	  localTime = GetBlockDuration();
+	}
 
     decomp.blocks[blockID].GetValue(trackID, localTime * frameRate, output);
   }
