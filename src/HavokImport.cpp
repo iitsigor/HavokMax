@@ -650,10 +650,20 @@ void HavokImport::DoImport(const std::string &fileName, bool suppressPrompts) {
       }
 
       if (numAnimations) {
-        LoadAnimation(aniCont->GetAnimation(motionIndex),
-                      aniCont->GetNumBindings()
-                          ? aniCont->GetBinding(motionIndex)
-                          : nullptr);
+		if (checked[Checked::CH_IMPORT_ALL_MOTION]) {
+		  for (int animIndex = 0; animIndex < numAnimations; animIndex++) {
+			LoadAnimation(aniCont->GetAnimation(animIndex),
+				         aniCont->GetNumBindings() > animIndex
+				         ? aniCont->GetBinding(animIndex)
+				         : nullptr);
+		  }
+		}
+		else {
+		  LoadAnimation(aniCont->GetAnimation(motionIndex),
+				       aniCont->GetNumBindings()
+				       ? aniCont->GetBinding(motionIndex)
+				       : nullptr);
+		}
       }
     }
   }
